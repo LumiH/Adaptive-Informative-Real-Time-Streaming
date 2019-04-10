@@ -24,7 +24,7 @@ prev_bitrate=0
 
 
 #Variables for deciding when frames are fetched
-join_segments =5
+join_segments = 5
 buffer_capacity =20000000
 max_current_buffer =20000000
 bytes_in_buffer =0
@@ -53,9 +53,9 @@ def issue_request(sock, request):
     # Parse response header
     end_header = raw_response.index(b'\r\n\r\n') + 4
     raw_header = raw_response[:end_header]
-    logging.debug(raw_header)
+    # logging.debug(raw_header)
     response = myhttp.HTTPResponse.parse(raw_header.decode())
-    logging.debug(response)
+    # logging.debug(response)
 
     # Receive response body
     content_length = response.get_header('Content-Length')
@@ -104,6 +104,7 @@ def stream(hostname, url, out):
     global total_segments
     global curr_segment_num
     global join_segments
+    global played_segment_bytes
 
     #begin buffering
     total_segments=len(mpd.representations[0].segment_ranges)
@@ -113,50 +114,48 @@ def stream(hostname, url, out):
     curr_playback_frame=0
     while curr_playback_frame < last_frame:
         print('*'*20)
-        print(curr_playback_frame)
+        print(str(curr_playback_frame)+"...."+str(last_frame))
         print('*'*20)
-        print(segments_in_buffer)
-        print('*'*20)
-        if segments_in_buffer > join_segments:  #sufficient frames to begin playing
+        if segments_in_buffer > join_segments:  #sufficient frames to begin playing/writing to file
             if not playing :
                 start_time = time.time()
                 playing = True
             else:
-
-                if ((start_time-time.time())% 1) == 0:     #'plays' certain number of frames every interval
-                    curr_playback_frame+=30
+                if time.time()-start_time > (1.0 / fps):     #adds individual 'frames' to playback buffer
+                    curr_playback_frame+=1
                     out.write(to_play_buffer[0]['raw_body'][curr_segment_frame])
                     curr_segment_frame+=1
-                if curr_playback_frame > to_play_buffer[0]['frame_number']: #We have played all frames within most recent segment, must move segment from to_play_buffer to played segment
+                    start_time=time.time()
+                if curr_segment_frame > to_play_buffer[0]['frame_number']-1: #We have played all frames within most recent segment in playback buffer, must move segment from to_play_buffer to played segment
                     size = to_play_buffer[0]['size']
-                    played_segments.add(to_play_buffer.pop(0))
+                    played_segments.append(to_play_buffer.pop(0))
                     played_segment_bytes+=size
-                    curr_playback_frame=0
-                    curr_segment_num=0
+                    curr_segment_frame=0
 
-        elif segments_in_buffer==0:     #Buffer frames before playing
+        if segments_in_buffer == 0:     #get initial segment
             segment=get_segment(hostname,sock,mpd.representations[0],0)
-            curr_representation=mpd.representations[0]
+            curr_representation = mpd.representations[0]
             to_play_buffer.append(segment)
             segments_in_buffer+=1
         #if frames_in_buffer >= buffer_size: #clear the buffer
             # buffer.clear()
-        if len(to_play_buffer)!=0:          #update global variables
-            last_buffered=to_play_buffer[-1]
-            bandwidth = last_buffered['size']/last_buffered['time_to_pull']
-        #bitrate_to_pull <= bandwidth as close as possible
 
-        for representation in mpd.representations:
-            curr_segment_num=last_buffered['ID']+1
-            if curr_segment_num < total_segments:
-                curr_seg_duration = representation._segment_duration #will need to check for end of file
-                num_bytes = representation.segment_ranges[curr_segment_num][1]-representation.segment_ranges[curr_segment_num][0]
+        else: # update global variables and get segment
+            if len(to_play_buffer)!=0:          #update global variables
+                last_buffered=to_play_buffer[-1]
+                bandwidth = last_buffered['size']/last_buffered['time_to_pull']
 
-                if bandwidth > (num_bytes/curr_seg_duration):
-                    curr_representation=representation
-                    segment=get_segment(hostname,sock,representation,curr_segment_num)
-                    to_play_buffer.append(segment)
-                    segments_in_buffer+=1
+            for representation in mpd.representations:  #bitrate_to_pull <= bandwidth as close as possible
+                curr_segment_num=last_buffered['ID']+1
+                if curr_segment_num < total_segments:
+                    curr_seg_duration = representation._segment_duration #will need to check for end of file
+                    num_bytes = representation.segment_ranges[curr_segment_num][1]-representation.segment_ranges[curr_segment_num][0]
+
+                    if bandwidth > (num_bytes/curr_seg_duration):
+                        curr_representation = representation
+                        segment = get_segment(hostname,sock,representation,curr_segment_num)
+                        to_play_buffer.append(segment)
+                        segments_in_buffer += 1
 
     sock.close()
 
@@ -176,8 +175,8 @@ def get_segment(hostname,sock,representation,segment):
     body_size=sys.getsizeof(raw_body)
     number_of_frames = (representation._segment_duration/1000)*fps
     size_per_frame=body_size/number_of_frames
-    for i in range(0,number_of_frames/30):
-        frame_body.append(raw_body[i*size_per_frame*30:(i+1)*size_per_frame*30])
+    for i in range(0,number_of_frames):
+        frame_body.append(raw_body[i*size_per_frame:(i+1)*size_per_frame])
 
     segment={'ID':segment,'time_to_pull':time_to_pull,'frame_number':number_of_frames,'size':body_size,'raw_body': frame_body}
     last_buffered=segment
