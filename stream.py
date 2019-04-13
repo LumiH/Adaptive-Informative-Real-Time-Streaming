@@ -130,7 +130,9 @@ def stream(hostname, url, out):
     while curr_playback_frame < last_frame:
         if len(to_play_buffer) >= join_segments:  #handles transfer of frames to playback TODO : manage minimum segments in buffer
             if time.time() - start_time > (1.0 / fps):     #adds individual 'frames' to playback buffer every duration of frame
-                out.write(to_play_buffer[0]['raw_body'][curr_segment_frame])
+                f = open("test.mp4", "wb+")
+                f.write(to_play_buffer[0]['raw_body'][curr_frame_segment])
+                f.close()
                 curr_playback_frame += 1
                 curr_frame_segment += 1
                 start_time = time.time()
