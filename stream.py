@@ -75,12 +75,8 @@ def issue_request(sock, request):
 def get_mpd(hostname, url, sock):
 
     req = myhttp.HTTPRequest("GET", myhttp.URI(url), headers={'Host':hostname})
-    print(req)
 
     (response, raw_body) = issue_request(sock, req)
-    print("\n"+"."*20)
-    print(response)
-    print("\n"+"."*20)
 
     mpdfile = mympd.MPDFile(raw_body)
 
@@ -130,7 +126,7 @@ def stream(hostname, url, out):
                 start_time=time.time()
 
             if curr_segment_frame >= to_play_buffer[0]['frame_number']:
-                # out.write(to_play_buffer[0]['raw_body'])
+                out.write(to_play_buffer[0]['raw_body'])
                 played_segments.append(to_play_buffer.pop(0))
                 played_segment_bytes+=to_play_buffer[0]['size']
                 curr_segment_frame=0
@@ -173,10 +169,6 @@ def stream(hostname, url, out):
 
     sock.close()
 
-    print('*'*20)
-    print(total_segments)
-    print('*'*20)
-
     return None
 
 def get_segment(hostname,sock,representation,segment,out):
@@ -184,15 +176,11 @@ def get_segment(hostname,sock,representation,segment,out):
     byte_range = representation.segment_ranges[segment]
     range_string='bytes='+str(byte_range[0])+'-'+str(byte_range[1])
     req = myhttp.HTTPRequest("GET", myhttp.URI(representation.base_url), headers={"Host":hostname,"Range":range_string})
-    print(req)
+
     request_start=time.time()
     (response, raw_body) = issue_request(sock, req)
-    print("\n"+"."*20)
-    print(response)
-    print("\n"+"."*20)
     time_to_pull=time.time()-request_start
 
-    out.write(raw_body)
     body_size=sys.getsizeof(raw_body)
     number_of_frames = (representation._segment_duration/1000)*fps
     segment={'ID':segment,'time_to_pull':time_to_pull,'frame_number':number_of_frames,'size':body_size,'raw_body': raw_body}
