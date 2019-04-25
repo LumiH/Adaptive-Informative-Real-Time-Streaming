@@ -26,7 +26,7 @@ prev_bitrate=0
 #Variables for deciding when frames are fetched
 join_segments = 1
 buffer_capacity =20000000
-max_current_buffer =5000000
+max_current_buffer =20000000
 bytes_in_buffer =0
 
 bandwidth =1000
@@ -37,7 +37,7 @@ played_segment_bytes =0
 fps = 30  #This should be determined by
 
 def issue_request(sock, request):
-    logging.debug(request)
+    #logging.debug(request)
 
     msg_utf = request.deparse().encode()
     sock.send(msg_utf)
@@ -53,9 +53,9 @@ def issue_request(sock, request):
     # Parse response header
     end_header = raw_response.index(b'\r\n\r\n') + 4
     raw_header = raw_response[:end_header]
-    # logging.debug(raw_header)
+    #logging.debug(raw_header)
     response = myhttp.HTTPResponse.parse(raw_header.decode())
-    # logging.debug(response)
+    #logging.debug(response)
 
     # Receive response body
     content_length = response.get_header('Content-Length')
@@ -75,7 +75,12 @@ def issue_request(sock, request):
 def get_mpd(hostname, url, sock):
 
     req = myhttp.HTTPRequest("GET", myhttp.URI(url), headers={'Host':hostname})
+    print(req)
+
     (response, raw_body) = issue_request(sock, req)
+    print("\n"+"."*20)
+    print(response)
+    print("\n"+"."*20)
 
     mpdfile = mympd.MPDFile(raw_body)
 
@@ -84,14 +89,12 @@ def get_mpd(hostname, url, sock):
 def get_init(mpd, hostname, sock, out):
     req = myhttp.HTTPRequest("GET", myhttp.URI(mpd.initialization_url), headers={'Host':hostname})
     (response, raw_body) = issue_request(sock, req)
+    out.write(raw_body)
 
     return
-def update_variables():
-    ''' Update the global variables before we call get_segments.
-    '''
-    pass
 
 def stream(hostname, url, out):
+
     sock = socket.socket()
     sock.connect((hostname, 80))
 
@@ -112,7 +115,6 @@ def stream(hostname, url, out):
     segment_duration=mpd.representations[0]._segment_duration/1000
     total_segments=len(mpd.representations[0].segment_ranges)
     last_frame = total_segments*segment_duration*fps
-    playing=False
     curr_segment_frame=0
     curr_playback_frame=0
     representation_chosen=False
@@ -124,20 +126,22 @@ def stream(hostname, url, out):
 
             if time.time()-start_time > (1.0 / fps):     #adds individual 'frames' to playback buffer
                 curr_playback_frame+=1
-                out.write(to_play_buffer[0]['raw_body'][curr_segment_frame])
                 curr_segment_frame+=1
                 start_time=time.time()
 
-
             if curr_segment_frame >= to_play_buffer[0]['frame_number']:
+                # out.write(to_play_buffer[0]['raw_body'])
                 played_segments.append(to_play_buffer.pop(0))
                 played_segment_bytes+=to_play_buffer[0]['size']
                 curr_segment_frame=0
 
         if len(to_play_buffer) == 0:     #get initial segment of data
-            segment=get_segment(hostname,sock,mpd.representations[0],0)
+            segment=get_segment(hostname,sock,mpd.representations[0],0,out)
             curr_representation = mpd.representations[0]
             to_play_buffer.append(segment)
+            curr_segment_num+=1
+            bytes_in_buffer+=segment['size']
+            representation_chosen=False
 
         #if frames_in_buffer >= buffer_size: #clear the buffer
             # buffer.clear()
@@ -158,9 +162,9 @@ def stream(hostname, url, out):
                                 break
                 elif max_current_buffer - (bytes_in_buffer - played_segment_bytes) > num_bytes:
                     print('*'*20)
-                    print(curr_segment_num)
+                    print(curr_segment_num, total_segments)
                     print('*'*20)
-                    segment = get_segment(hostname,sock,representation,curr_segment_num)
+                    segment = get_segment(hostname,sock,representation,curr_segment_num,out)
                     to_play_buffer.append(segment)
                     curr_segment_num+=1
                     bytes_in_buffer+=segment['size']
@@ -175,26 +179,27 @@ def stream(hostname, url, out):
 
     return None
 
-def get_segment(hostname,sock,representation,segment):
+def get_segment(hostname,sock,representation,segment,out):
     global last_buffered
-    range_string="bytes="+str(representation.segment_ranges[segment][0])+"-"+str(representation.segment_ranges[segment][1])
+    byte_range = representation.segment_ranges[segment]
+    range_string='bytes='+str(byte_range[0])+'-'+str(byte_range[1])
+    req = myhttp.HTTPRequest("GET", myhttp.URI(representation.base_url), headers={"Host":hostname,"Range":range_string})
+    print(req)
     request_start=time.time()
-    response, raw_body = issue_request(sock, myhttp.HTTPRequest("GET", representation.base_url, headers={"Host":hostname,"Range":range_string}))
+    (response, raw_body) = issue_request(sock, req)
+    print("\n"+"."*20)
+    print(response)
+    print("\n"+"."*20)
     time_to_pull=time.time()-request_start
-    frame_body=[]
+
+    out.write(raw_body)
     body_size=sys.getsizeof(raw_body)
     number_of_frames = (representation._segment_duration/1000)*fps
-
-    size_per_frame=body_size/number_of_frames
-    for i in range(0,number_of_frames):
-        frame_body.append(raw_body[i*size_per_frame:(i+1)*size_per_frame])
-
-    segment={'ID':segment,'time_to_pull':time_to_pull,'frame_number':number_of_frames,'size':body_size,'raw_body': frame_body}
-    last_buffered=segment
+    segment={'ID':segment,'time_to_pull':time_to_pull,'frame_number':number_of_frames,'size':body_size,'raw_body': raw_body}
+    last_buffered = segment
     return segment
 
 def main():
-    # Parse arguments
     arg_parser = ArgumentParser(description='DASH client', add_help=False)
     arg_parser.add_argument('-u', '--url', dest='url', action='store',
             default='http://picard.cs.colgate.edu/dash/manifest.mpd',
@@ -203,8 +208,6 @@ def main():
             default='test.mp4',
             help='Name of file in which to store video data')
     settings = arg_parser.parse_args()
-
-
 
     uri = myhttp.URI(settings.url)
     if settings.output is None:
