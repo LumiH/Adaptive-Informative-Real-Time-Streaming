@@ -281,13 +281,13 @@ def main():
     else:
         sink = open(settings.output, 'wb')
 
-    master = Tk()
+    master = Tk() #creates tkinter instance referenced thorghout
 
     vlc_instance = vlc.Instance("--width=5000, height=10000")
     fpath = os.path.join(os.getcwd(), "test.mp4")
     vlc_player = vlc_instance.media_new(fpath).player_new_from_media()
 
-    def start():
+    def start(): #Assigns chosen values to global variables and initiates streaming
 
         global running
         global max_current_buffer
@@ -297,9 +297,13 @@ def main():
         global run_start_time
         global delaytype
         global delayMax
+
+
         running=True
-        if curr_playback_frame>0:
+
+        if curr_playback_frame>0: #if paused and not restarted begin playback immediatley
             playing=True
+
         raw_MCB=e.get()
         max_current_buffer=int(e.get()*1000000)
         join_segments=int(j.get())
@@ -307,30 +311,42 @@ def main():
 
         print("Running simulation with MCB:"+str(raw_MCB)+"Mb and join_segments:"+str(join_segments)+"Delay Type:"+str(delaytype)+"Max delay"+str(delayMax))
         run_start_time=time.time()
-        stream(uri.host, uri.abs_path, sink,master,label2,label6,vlc_player,label7,CustomEquation,label10)
+
+        stream(uri.host, uri.abs_path, sink,master,TimeDynamic,SegDynamic,vlc_player,ResDynamic,CustomEquation,delayDynamic)
+
+        #Unpauses VLC playback
         if not vlc_player.is_playing():
             vlc_player.set_pause(False)
 
+
+
         master.update()
         # print("test")
-    def stop():
+    def stop(): #Pauses the stream by stoping playback
+
         global running
         global playing
-        running=False
-        playing=False
-        print("Paused")
-        label2.config(fg="yellow")
-        label6.config(fg="yellow")
 
-        label7.config(fg="yellow")
-        label10.config(fg="yellow")
+        running=False #total program running
+        playing=False #playback occuring in VlC
 
+        print("PAUSED")
+
+        #sets text color to yellow to indicate paused state
+        TimeDynamic.config(fg="yellow")
+        SegDynamic.config(fg="yellow")
+
+        ResDynamic.config(fg="yellow")
+        delayDynamic.config(fg="yellow")
+
+        #Puases the Vlc playback
         if vlc_player.is_playing():
             print ("-"*30 + "Success!"+"-"*30 )
             vlc_player.set_pause(True)
 
 
-    def restart():
+    def restart(): #processes the user restart request and sets variables to default
+
         global running
         global last_buffered
         global segments_in_buffer
@@ -344,8 +360,6 @@ def main():
         global curr_playback_frame
         global to_play_buffer
 
-        join_segments = int(j.get())
-        max_current_buffer =int(e.get()*1000000)
         bytes_in_buffer =0
         bandwidth =1000
         played_segment_bytes =0
@@ -356,17 +370,25 @@ def main():
         last_buffered=None
         total_segments=0
         curr_playback_frame=0
+
+        #pauses vlc playback
         if vlc_player.is_playing():
             vlc_player.set_pause(True)
         vlc_player.stop()
-        label2.config(fg="red",text="00:00:00")
-        label6.config(fg="red",text="0")
-        label10.config(fg="red",text="0")
-        label7.config(fg="red",text="0x0")
+
+        #sets real time variable text color to indicate stopping
+        TimeDynamic.config(fg="red",text="00:00:00")
+        SegDynamic.config(fg="red",text="0")
+        delayDynamic.config(fg="red",text="0")
+        ResDynamic.config(fg="red",text="0x0")
         print("RESET")
-    def setdelay(type):
+
+
+    def setdelay(type): #assignes the delay type from the buttons to the global variable
+
         global delaytype
         delaytype=type
+
     #scale slider for max_current_buffer
     label = Label(master,text="Maximum active buffer (Mb)",fg="black")
     label.pack()
@@ -380,8 +402,8 @@ def main():
     j.pack()
     j.set(1)
     #scale slider for delay
-    label7 = Label(master,text="Max Request Delay (ms)",fg="black")
-    label7.pack()
+    ResDynamic = Label(master,text="Max Request Delay (ms)",fg="black")
+    ResDynamic.pack()
     k=Scale(master, from_=0, to=2500,  orient=HORIZONTAL)
     k.pack()
     k.set(0.0)
@@ -409,28 +431,26 @@ def main():
     b.pack()
     s.pack()
     r.pack()
-    #current frame rate and segment number labels
-    label4 = Label(master,text="Playback Time",fg="black")
-    label4.pack()
-    label2=Label(master,text="00:00:00",fg="red")
-    label2.pack()
-    label5 = Label(master,text="Last Segment Buffered",fg="black")
-    label5.pack()
-    label6=Label(master,text="0",fg="red")
-    label6.pack()
-    label8=Label(master,text="Current Resolution",fg="black")
-    label8.pack()
-    label7 = Label(master,text="0x0",fg="red")
-    label7.pack()
-    label9=Label(master,text="Current Delay",fg="black")
-    label9.pack()
-    label10=Label(master,text="0",fg="red")
-    label10.pack()
+    #Real Time Readouts
+    TimeLabel = Label(master,text="Playback Time",fg="black")
+    TimeLabel.pack()
+    TimeDynamic=Label(master,text="00:00:00",fg="red")
+    TimeDynamic.pack()
+    SegLabel = Label(master,text="Last Segment Buffered",fg="black")
+    SegLabel.pack()
+    SegDynamic=Label(master,text="0",fg="red")
+    SegDynamic.pack()
+    ResLabel=Label(master,text="Current Resolution",fg="black")
+    ResLabel.pack()
+    ResDynamic = Label(master,text="0x0",fg="red")
+    ResDynamic.pack()
+    delayLabel=Label(master,text="Current Delay",fg="black")
+    delayLabel.pack()
+    delayDynamic=Label(master,text="0",fg="red")
+    delayDynamic.pack()
 
     mainloop()
 
-
-    # b = Button(master, text="OK",command=stream(uri.host, uri.abs_path, sink))
 
 
     if settings.output is not None:
