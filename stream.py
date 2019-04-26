@@ -10,6 +10,12 @@ import threading
 import time
 from Tkinter import *
 import datetime
+import random
+import parser
+from math import cos
+from math import sin
+from math import tan
+
 
 to_play_buffer = []
 played_segments=[]
@@ -24,8 +30,10 @@ running=False
 playing=False
 curr_playback_frame=0
 start_time=0
-delay=0
-
+run_start_time=0
+delayMax=0.0
+delaytype="linear"
+LastDelay=0
 #Variables for deciding when frames are fetched
 join_segments = 1
 buffer_capacity =20000000
@@ -39,19 +47,24 @@ played_segment_bytes =0
 
 fps = 30  #This should be determined by
 
-def issue_request(sock, request):
+def issue_request(sock, request,customfield):
     # logging.debug(request)
     print(request)
     global delay
+    global delaytype
+    global LastDelay
+
     msg_utf = request.deparse().encode()
     sock.send(msg_utf)
 
     raw_response = b''
     bufsize = 4096
-    time.sleep(delay)
+    LastDelay=float(get_delay(delaytype,customfield))
+    print(LastDelay)
+    time.sleep(LastDelay)
     new_data = sock.recv(bufsize)
     while b"\r\n" not in new_data:
-        time.sleep(delay)
+        time.sleep(LastDelay)
         raw_response += new_data
         new_data = sock.recv(bufsize)
 
@@ -79,31 +92,62 @@ def issue_request(sock, request):
 
     return response, raw_body
 
-def get_mpd(hostname, url, sock):
+def get_delay(type,customfield):
+    global delaytype
+    global delayMax
+    global startime
+    if delaytype=="linear":
+        return delayMax
+    if delaytype=="lineargrowth":
+        if total_segments!=0:
+            return delayMax*(float(time.time()-run_start_time)/(total_segments*2))
+        else:
+            return delayMax*(int(time.time()-run_start_time)/(30.0*2.0))
+    if delaytype=="sawtooth":
+        print(delayMax)
+        if bool(random.getrandbits(1)):
+            return float(delayMax)
+        else:
+            return 0.0
+    if delaytype=="random":
+        return float(random.randint(0,int(delayMax*1000)))/1000.0
+    if delaytype=="custom":
+        equation=customfield.get()
+        code = parser.expr(equation).compile()
+        t=int(time.time()-run_start_time)
+        print('*'*20)
+        print(str(time.time())+","+str(start_time))
+        print('*'*20)
+        return eval(code)
+
+
+
+def get_mpd(hostname, url, sock,customfield):
 
     req = myhttp.HTTPRequest("GET", myhttp.URI(url), headers={'Host':hostname})
 
-    (response, raw_body) = issue_request(sock, req)
+    (response, raw_body) = issue_request(sock, req,customfield)
 
     mpdfile = mympd.MPDFile(raw_body)
 
     return mpdfile
 
-def get_init(mpd, hostname, sock, out):
+def get_init(mpd, hostname, sock, out,customfield):
     req = myhttp.HTTPRequest("GET", myhttp.URI(mpd.initialization_url), headers={'Host':hostname})
-    (response, raw_body) = issue_request(sock, req)
+    (response, raw_body) = issue_request(sock, req,customfield)
     out.write(raw_body)
 
     return
 
-def stream(hostname, url, out,TK,framelabel,segmentlabel):
+def stream(hostname, url, out,TK,framelabel,segmentlabel,reslabel,customfield,delayLabel):
 
     sock = socket.socket()
     sock.connect((hostname, 80))
 
     # Perform streaming
-    mpd = get_mpd(hostname, url, sock)
-    get_init(mpd, hostname, sock, out)
+    mpd = get_mpd(hostname, url, sock,customfield)
+    get_init(mpd, hostname, sock, out,customfield)
+
     global last_buffered
     global segments_in_buffer
     global bandwidth
@@ -116,7 +160,7 @@ def stream(hostname, url, out,TK,framelabel,segmentlabel):
     global playing
     global start_time
     global curr_playback_frame
-
+    global LastDelay
 
 
 
@@ -131,7 +175,7 @@ def stream(hostname, url, out,TK,framelabel,segmentlabel):
     while curr_playback_frame < last_frame and running==True:
 
         segmentlabel.config(fg="green",text=str(curr_segment_num))
-
+        delayLabel.config(fg="green",text=str(LastDelay))
 
         if len(to_play_buffer) > join_segments and playing!=True:  #handles transfer of frames to playback
             playing=True
@@ -149,7 +193,7 @@ def stream(hostname, url, out,TK,framelabel,segmentlabel):
                 curr_segment_frame=0
         if len(to_play_buffer) == 0:     #get initial segment of data
             framelabel.config(fg="red",text=str(datetime.timedelta(seconds=(curr_playback_frame)/fps)))
-            segment=get_segment(hostname,sock,mpd.representations[0],0,out)
+            segment=get_segment(hostname,sock,mpd.representations[0],0,out,reslabel,customfield)
             curr_representation = mpd.representations[0]
             to_play_buffer.append(segment)
             curr_segment_num+=1
@@ -181,7 +225,7 @@ def stream(hostname, url, out,TK,framelabel,segmentlabel):
                     # print('*'*20)
                     # print(curr_segment_num, total_segments)
                     # print('*'*20)
-                    segment=get_segment(hostname,sock,representation,curr_segment_num,out)
+                    segment=get_segment(hostname,sock,representation,curr_segment_num,out,reslabel,customfield)
                     to_play_buffer.append(segment)
                     curr_segment_num+=1
                     bytes_in_buffer+=segment['size']
@@ -193,14 +237,14 @@ def stream(hostname, url, out,TK,framelabel,segmentlabel):
 
     return None
 
-def get_segment(hostname,sock,representation,segment,out):
+def get_segment(hostname,sock,representation,segment,out,reslabel,customfield):
     global last_buffered
     byte_range = representation.segment_ranges[segment]
     range_string='bytes='+str(byte_range[0])+'-'+str(byte_range[1])
     req = myhttp.HTTPRequest("GET", myhttp.URI(representation.base_url), headers={"Host":hostname,"Range":range_string})
-
+    reslabel.config(fg="green",text=str(representation._width)+"x"+str(representation._height))
     request_start=time.time()
-    (response, raw_body) = issue_request(sock, req)
+    (response, raw_body) = issue_request(sock, req,customfield)
     out.write(raw_body)
     # print("WRITE")
 
@@ -217,7 +261,7 @@ def get_segment(hostname,sock,representation,segment,out):
 def main():
     global running
     global total_segments
-
+    global delayLabel
 
     arg_parser = ArgumentParser(description='DASH client', add_help=False)
     arg_parser.add_argument('-u', '--url', dest='url', action='store',
@@ -243,15 +287,20 @@ def main():
         global curr_playback_frame
         global playing
         global delay
+        global run_start_time
+        global delaytype
+        global delayMax
         running=True
         if curr_playback_frame>0:
             playing=True
         raw_MCB=e.get()
         max_current_buffer=int(e.get()*1000000)
         join_segments=int(j.get())
-        delay=float(k.get())/1000.0
-        print("Running simulation with MCB:"+str(raw_MCB)+"Mb and join_segments:"+str(join_segments))
-        stream(uri.host, uri.abs_path, sink,master,label2,label6)
+        delayMax=float(k.get())/1000.0
+
+        print("Running simulation with MCB:"+str(raw_MCB)+"Mb and join_segments:"+str(join_segments)+"Delay Type:"+str(delaytype)+"Max delay"+str(delayMax))
+        run_start_time=time.time()
+        stream(uri.host, uri.abs_path, sink,master,label2,label6,label7,CustomEquation,label10)
 
         master.update()
         # print("test")
@@ -263,6 +312,8 @@ def main():
         print("Paused")
         label2.config(fg="yellow")
         label6.config(fg="yellow")
+        label7.config(fg="yellow")
+        label10.config(fg="yellow")
 
     def restart():
         global running
@@ -292,7 +343,12 @@ def main():
         curr_playback_frame=0
         label2.config(fg="red",text="00:00:00")
         label6.config(fg="red",text="0")
+        label10.config(fg="red",text="0")
+        label7.config(fg="red",text="0x0")
         print("RESET")
+    def setdelay(type):
+        global delaytype
+        delaytype=type
     #scale slider for max_current_buffer
     label = Label(master,text="Maximum active buffer (Mb)",fg="black")
     label.pack()
@@ -306,11 +362,28 @@ def main():
     j.pack()
     j.set(1)
     #scale slider for delay
-    label7 = Label(master,text="Request delay (ms)",fg="black")
+    label7 = Label(master,text="Max Request Delay (ms)",fg="black")
     label7.pack()
     k=Scale(master, from_=0, to=2500,  orient=HORIZONTAL)
     k.pack()
     k.set(0.0)
+    #delay time buttons
+    linear=Button(master, text="Linear Max",command=lambda: setdelay("linear"))
+    random=Button(master, text="random", command=lambda: setdelay("random"))
+    lineargrowth=Button(master, text="Linear Growth", command=lambda: setdelay("lineargrowth"))
+    sawtooth=Button(master, text="Sawtooth",command=lambda:setdelay("sawtooth"))
+    custom=Button(master, text="Custom",command=lambda:setdelay("custom"))
+    CustomLabel=Label(master,text="Custom Delay Equation(must be a function of t)")
+    CustomEquation = Entry(master)
+
+    linear.pack()
+    random.pack()
+    lineargrowth.pack()
+    sawtooth.pack()
+    custom.pack()
+    CustomLabel.pack()
+    CustomEquation.pack()
+    CustomEquation.insert(0,"ex. 3x,sin(x)**2")
     #start and stop buttons
     b = Button(master, text="Run", command=lambda : start())
     s= Button(master, text="Pause", command=lambda: stop())
@@ -327,6 +400,14 @@ def main():
     label5.pack()
     label6=Label(master,text="0",fg="red")
     label6.pack()
+    label8=Label(master,text="Current Resolution",fg="black")
+    label8.pack()
+    label7 = Label(master,text="0x0",fg="red")
+    label7.pack()
+    label9=Label(master,text="Current Delay",fg="black")
+    label9.pack()
+    label10=Label(master,text="0",fg="red")
+    label10.pack()
 
     mainloop()
 
