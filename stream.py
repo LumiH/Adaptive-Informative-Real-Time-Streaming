@@ -312,11 +312,11 @@ def main():
         print("Running simulation with MCB:"+str(raw_MCB)+"Mb and join_segments:"+str(join_segments)+"Delay Type:"+str(delaytype)+"Max delay"+str(delayMax))
         run_start_time=time.time()
 
-        stream(uri.host, uri.abs_path, sink,master,TimeDynamic,SegDynamic,vlc_player,ResDynamic,CustomEquation,delayDynamic)
-
         #Unpauses VLC playback
         if not vlc_player.is_playing():
             vlc_player.set_pause(False)
+
+        stream(uri.host, uri.abs_path, sink,master,TimeDynamic,SegDynamic,vlc_player,ResDynamic,CustomEquation,delayDynamic)
 
 
 
@@ -341,7 +341,6 @@ def main():
 
         #Puases the Vlc playback
         if vlc_player.is_playing():
-            print ("-"*30 + "Success!"+"-"*30 )
             vlc_player.set_pause(True)
 
 
