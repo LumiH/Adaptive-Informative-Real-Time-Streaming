@@ -21,8 +21,11 @@ import vlc
 
 to_play_buffer = []
 played_segments=[]
+vlc_instance=None
+vlc_player=None
 
 #Variables for getting frames
+sink=None
 curr_representation = None
 curr_segment_num =0
 curr_segment_frame=0
@@ -265,6 +268,9 @@ def main():
     global running
     global total_segments
     global delayLabel
+    global vlc_instance
+    global vlc_player
+    global sink
 
     arg_parser = ArgumentParser(description='DASH client', add_help=False)
     arg_parser.add_argument('-u', '--url', dest='url', action='store',
@@ -283,9 +289,7 @@ def main():
 
     master = Tk() #creates tkinter instance referenced thorghout
 
-    vlc_instance = vlc.Instance("--width=5000, height=10000")
     fpath = os.path.join(os.getcwd(), "test.mp4")
-    vlc_player = vlc_instance.media_new(fpath).player_new_from_media()
 
     def start(): #Assigns chosen values to global variables and initiates streaming
 
@@ -297,12 +301,19 @@ def main():
         global run_start_time
         global delaytype
         global delayMax
+        global vlc_instance
+        global vlc_player
+        global sink
 
 
         running=True
 
         if curr_playback_frame>0: #if paused and not restarted begin playback immediatley
             playing=True
+            vlc_player.set_pause(False)
+        else:
+             vlc_instance = vlc.Instance("--width=5000, --height=10000")
+             vlc_player = vlc_instance.media_new(fpath).player_new_from_media()
 
         raw_MCB=e.get()
         max_current_buffer=int(e.get()*1000000)
@@ -311,10 +322,6 @@ def main():
 
         print("Running simulation with MCB:"+str(raw_MCB)+"Mb and join_segments:"+str(join_segments)+"Delay Type:"+str(delaytype)+"Max delay"+str(delayMax))
         run_start_time=time.time()
-
-        #Unpauses VLC playback
-        if not vlc_player.is_playing():
-            vlc_player.set_pause(False)
 
         stream(uri.host, uri.abs_path, sink,master,TimeDynamic,SegDynamic,vlc_player,ResDynamic,CustomEquation,delayDynamic)
 
@@ -326,7 +333,7 @@ def main():
 
         global running
         global playing
-
+        global vlc_player
         running=False #total program running
         playing=False #playback occuring in VlC
 
@@ -358,6 +365,11 @@ def main():
         global running
         global curr_playback_frame
         global to_play_buffer
+        global vlc_player
+        global vlc_instance
+        global sink
+
+        stop()
 
         bytes_in_buffer =0
         bandwidth =1000
@@ -371,8 +383,6 @@ def main():
         curr_playback_frame=0
 
         #pauses vlc playback
-        if vlc_player.is_playing():
-            vlc_player.set_pause(True)
         vlc_player.stop()
 
         #sets real time variable text color to indicate stopping
@@ -381,6 +391,13 @@ def main():
         delayDynamic.config(fg="red",text="0")
         ResDynamic.config(fg="red",text="0x0")
         print("RESET")
+
+        os.remove("test.mp4")
+        if settings.output is None:
+            sink = open("test.mp4", 'wb')
+        else:
+            sink = open("test.mp4", 'wb')
+
 
 
     def setdelay(type): #assignes the delay type from the buttons to the global variable
