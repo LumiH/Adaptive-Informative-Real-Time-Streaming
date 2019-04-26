@@ -8,7 +8,7 @@ import socket
 import sys
 import threading
 import time
-from Tkinter import *
+from tkinter import *
 import datetime
 import random
 import parser
@@ -307,7 +307,6 @@ def main():
 
         print("Running simulation with MCB:"+str(raw_MCB)+"Mb and join_segments:"+str(join_segments)+"Delay Type:"+str(delaytype)+"Max delay"+str(delayMax))
         run_start_time=time.time()
-        vlc_player=None
         stream(uri.host, uri.abs_path, sink,master,label2,label6,vlc_player,label7,CustomEquation,label10)
         if not vlc_player.is_playing():
             vlc_player.set_pause(False)
