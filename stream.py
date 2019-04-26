@@ -8,8 +8,10 @@ import socket
 import sys
 import threading
 import time
-from Tkinter import *
+from tkinter import *
 import datetime
+import os
+import vlc
 
 to_play_buffer = []
 played_segments=[]
@@ -96,7 +98,7 @@ def get_init(mpd, hostname, sock, out):
 
     return
 
-def stream(hostname, url, out,TK,framelabel,segmentlabel):
+def stream(hostname, url, out,TK,framelabel,segmentlabel,vlc_player):
 
     sock = socket.socket()
     sock.connect((hostname, 80))
@@ -116,9 +118,6 @@ def stream(hostname, url, out,TK,framelabel,segmentlabel):
     global playing
     global start_time
     global curr_playback_frame
-
-
-
 
     #begin buffering
     segment_duration=mpd.representations[0]._segment_duration/1000
@@ -155,6 +154,7 @@ def stream(hostname, url, out,TK,framelabel,segmentlabel):
             curr_segment_num+=1
             bytes_in_buffer+=segment['size']
             representation_chosen=False
+            vlc_player.play()
 
         #if frames_in_buffer >= buffer_size: #clear the buffer
             # buffer.clear()
@@ -236,6 +236,10 @@ def main():
 
     master = Tk()
 
+    vlc_instance = vlc.Instance("--width=5000, height=10000")
+    fpath = os.path.join(os.getcwd(), "test.mp4")
+    vlc_player = vlc_instance.media_new(fpath).player_new_from_media()
+
     def start():
 
         global running
@@ -251,8 +255,9 @@ def main():
         join_segments=int(j.get())
         delay=float(k.get())/1000.0
         print("Running simulation with MCB:"+str(raw_MCB)+"Mb and join_segments:"+str(join_segments))
-        stream(uri.host, uri.abs_path, sink,master,label2,label6)
-
+        stream(uri.host, uri.abs_path, sink,master,label2,label6, vlc_player)
+        if not vlc_player.is_playing():
+            vlc_player.set_pause(False)
         master.update()
         # print("test")
     def stop():
@@ -263,6 +268,9 @@ def main():
         print("Paused")
         label2.config(fg="yellow")
         label6.config(fg="yellow")
+        if vlc_player.is_playing():
+            print ("-"*30 + "Success!"+"-"*30 )
+            vlc_player.set_pause(True)
 
     def restart():
         global running
@@ -290,6 +298,9 @@ def main():
         last_buffered=None
         total_segments=0
         curr_playback_frame=0
+        if vlc_player.is_playing():
+            vlc_player.set_pause(True)
+        vlc_player.stop()
         label2.config(fg="red",text="00:00:00")
         label6.config(fg="red",text="0")
         print("RESET")
