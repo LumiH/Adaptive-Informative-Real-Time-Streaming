@@ -166,6 +166,7 @@ def stream(hostname, url, out,TK,framelabel,segmentlabel,vlc_player,reslabel,cus
     global start_time
     global curr_playback_frame
     global LastDelay
+    global pause_duration
 
 
 
@@ -185,10 +186,11 @@ def stream(hostname, url, out,TK,framelabel,segmentlabel,vlc_player,reslabel,cus
         if len(to_play_buffer) > join_segments and playing!=True:  #handles transfer of frames to playback
             playing=True
             start_time=time.time()
+            vlc_player.play()
         if playing==True:
             # print(curr_playback_frame)
             framelabel.config(fg="green",text=str(datetime.timedelta(seconds=(curr_playback_frame)/fps)))
-            new_playback_frame=int(float(time.time()-start_time)/(1.0/fps))
+            new_playback_frame=int(float(time.time()-start_time-pause_duration)/(1.0/fps))
             curr_segment_frame+=new_playback_frame-curr_playback_frame
             curr_playback_frame=new_playback_frame
             # print(curr_segment_frame)
@@ -204,7 +206,6 @@ def stream(hostname, url, out,TK,framelabel,segmentlabel,vlc_player,reslabel,cus
             curr_segment_num+=1
             bytes_in_buffer+=segment['size']
             representation_chosen=False
-            vlc_player.play()
 
         #if frames_in_buffer >= buffer_size: #clear the buffer
             # buffer.clear()
@@ -271,6 +272,7 @@ def main():
     global vlc_instance
     global vlc_player
     global sink
+    global pause_duration
 
     arg_parser = ArgumentParser(description='DASH client', add_help=False)
     arg_parser.add_argument('-u', '--url', dest='url', action='store',
@@ -290,6 +292,7 @@ def main():
     master = Tk() #creates tkinter instance referenced thorghout
 
     fpath = os.path.join(os.getcwd(), "test.mp4")
+    pause_duration = 0
 
     def start(): #Assigns chosen values to global variables and initiates streaming
 
@@ -304,6 +307,8 @@ def main():
         global vlc_instance
         global vlc_player
         global sink
+        global pause_duration
+        global pause_start_time
 
 
         running=True
@@ -311,9 +316,11 @@ def main():
         if curr_playback_frame>0: #if paused and not restarted begin playback immediatley
             playing=True
             vlc_player.set_pause(False)
+            pause_duration += time.time()-pause_start_time
         else:
              vlc_instance = vlc.Instance("--width=5000, --height=10000")
              vlc_player = vlc_instance.media_new(fpath).player_new_from_media()
+             pause_duration = 0
 
         raw_MCB=e.get()
         max_current_buffer=int(e.get()*1000000)
@@ -336,9 +343,11 @@ def main():
         global vlc_player
         running=False #total program running
         playing=False #playback occuring in VlC
+        global pause_start_time
 
         print("PAUSED")
 
+        pause_start_time = time.time()
         #sets text color to yellow to indicate paused state
         TimeDynamic.config(fg="yellow")
         SegDynamic.config(fg="yellow")
@@ -381,6 +390,7 @@ def main():
         last_buffered=None
         total_segments=0
         curr_playback_frame=0
+        pause_duration = 0
 
         #pauses vlc playback
         vlc_player.stop()
