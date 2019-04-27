@@ -145,7 +145,7 @@ def get_init(mpd, hostname, sock, out,customfield):
 
     return
 
-def stream(hostname, url, out,TK,framelabel,segmentlabel,vlc_player,reslabel,customfield,delayLabel):
+def stream(hostname, url, out,TK,framelabel,segmentlabel,vlc_player,reslabel,customfield,delayLabel, bandwidthLabel):
 
     sock = socket.socket()
     sock.connect((hostname, 80))
@@ -178,9 +178,12 @@ def stream(hostname, url, out,TK,framelabel,segmentlabel,vlc_player,reslabel,cus
     representation_chosen=False
 
     while curr_playback_frame < last_frame and running==True:
-
-        segmentlabel.config(fg="green",text=str(curr_segment_num))
+        if len(to_play_buffer) == 0:
+            segmentlabel.config(fg="green",text="0 , 0")
+        else:
+            segmentlabel.config(fg="green",text=str( round((bytes_in_buffer-played_segment_bytes)/1000000,3) ) + " , " + str( (to_play_buffer[-1]["ID"]-to_play_buffer[0]["ID"])*segment_duration ))
         delayLabel.config(fg="green",text=str(LastDelay))
+        bandwidthLabel.config(fg="green",text=str(round(bandwidth/1000000,3)))
 
         if len(to_play_buffer) > join_segments and playing!=True:  #handles transfer of frames to playback
             playing=True
@@ -289,7 +292,7 @@ def main():
         sink = open(settings.output, 'wb')
 
     master = Tk() #creates tkinter instance referenced thorghout
-    master.geometry("800x660")
+    master.geometry("950x720")
     master.title("Adaptive Real-Time Streaming")
 
     fpath = os.path.join(os.getcwd(), "test.mp4")
@@ -337,7 +340,7 @@ def main():
         print("Running simulation with MCB:"+str(raw_MCB)+"Mb and join_segments:"+str(join_segments)+"Delay Type:"+str(delaytype)+"Max delay"+str(delayMax))
         run_start_time=time.time()
 
-        stream(uri.host, uri.abs_path, sink,master,TimeDynamic,SegDynamic,vlc_player,ResDynamic,CustomEquation,delayDynamic)
+        stream(uri.host, uri.abs_path, sink,master,TimeDynamic,SegDynamic,vlc_player,ResDynamic,CustomEquation,delayDynamic, bandwidthDynamic)
 
 
 
@@ -361,6 +364,7 @@ def main():
 
         ResDynamic.config(fg="yellow")
         delayDynamic.config(fg="yellow")
+        bandwidthDynamic.config(fg="yellow")
 
         #Puases the Vlc playback
         if vlc_player.is_playing():
@@ -406,6 +410,7 @@ def main():
         TimeDynamic.config(fg="red",text="00:00:00")
         SegDynamic.config(fg="red",text="0")
         delayDynamic.config(fg="red",text="0")
+        bandwidthDynamic.config(fg="red",text="0")
         ResDynamic.config(fg="red",text="0x0")
         print("RESET")
 
@@ -451,7 +456,7 @@ def main():
     lineargrowth=Button(master, text="Linear Growth", command=lambda: setdelay("lineargrowth"))
     sawtooth=Button(master, text="Sawtooth",command=lambda:setdelay("sawtooth"))
     custom=Button(master, text="Custom",command=lambda:setdelay("custom"))
-    CustomLabel=Label(master,text="Custom Delay Equation(must be a function of t)")
+    CustomLabel=Label(master,text="Custom Delay Equation (function of t)")
     CustomEquation = Entry(master)
 
     linear.pack()
@@ -461,7 +466,7 @@ def main():
     custom.pack()
     CustomLabel.pack()
     CustomEquation.pack()
-    CustomEquation.insert(0,"ex. 3x,sin(x)**2")
+    CustomEquation.insert(0,"ex. 3*t, 5*sin(t)")
     #start and stop buttons
     b = Button(master, text="Run", command=lambda : start())
     s= Button(master, text="Pause", command=lambda: stop())
@@ -474,18 +479,22 @@ def main():
     TimeLabel.pack()
     TimeDynamic=Label(master,text="00:00:00",fg="red")
     TimeDynamic.pack()
-    SegLabel = Label(master,text="Last Segment Buffered",fg="black")
-    SegLabel.pack()
-    SegDynamic=Label(master,text="0",fg="red")
-    SegDynamic.pack()
-    ResLabel=Label(master,text="Current Resolution",fg="black")
-    ResLabel.pack()
-    ResDynamic = Label(master,text="0x0",fg="red")
-    ResDynamic.pack()
-    delayLabel=Label(master,text="Current Delay",fg="black")
+    delayLabel=Label(master,text="Current Delay (s)",fg="black")
     delayLabel.pack()
     delayDynamic=Label(master,text="0",fg="red")
     delayDynamic.pack()
+    bandwidthLabel=Label(master,text="Bandwidth (Mb/s)",fg="black")
+    bandwidthLabel.pack()
+    bandwidthDynamic=Label(master,text="0",fg="red")
+    bandwidthDynamic.pack()
+    SegLabel = Label(master,text="Video in Buffer (Mb , s)",fg="black")
+    SegLabel.pack()
+    SegDynamic=Label(master,text="0",fg="red")
+    SegDynamic.pack()
+    ResLabel=Label(master,text="Newly Buffered Resolution",fg="black")
+    ResLabel.pack()
+    ResDynamic = Label(master,text="0x0",fg="red")
+    ResDynamic.pack()
 
 
 
