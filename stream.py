@@ -17,6 +17,7 @@ from math import sin
 from math import tan
 import os
 import vlc
+import platform
 
 
 to_play_buffer = []
@@ -169,7 +170,6 @@ def stream(hostname, url, out,TK,framelabel,segmentlabel,vlc_player,reslabel,cus
     global pause_duration
 
 
-
     #begin buffering
     segment_duration=mpd.representations[0]._segment_duration/1000
     total_segments=len(mpd.representations[0].segment_ranges)
@@ -177,7 +177,6 @@ def stream(hostname, url, out,TK,framelabel,segmentlabel,vlc_player,reslabel,cus
     curr_segment_frame=0
     representation_chosen=False
 
-    print(running)
     while curr_playback_frame < last_frame and running==True:
 
         segmentlabel.config(fg="green",text=str(curr_segment_num))
@@ -290,6 +289,8 @@ def main():
         sink = open(settings.output, 'wb')
 
     master = Tk() #creates tkinter instance referenced thorghout
+    master.geometry("800x660")
+    master.title("Adaptive Real-Time Streaming")
 
     fpath = os.path.join(os.getcwd(), "test.mp4")
     pause_duration = 0
@@ -318,9 +319,14 @@ def main():
             vlc_player.set_pause(False)
             pause_duration += time.time()-pause_start_time
         else:
-             vlc_instance = vlc.Instance("--width=5000, --height=10000")
-             vlc_player = vlc_instance.media_new(fpath).player_new_from_media()
-             pause_duration = 0
+            vlc_instance = vlc.Instance()
+            vlc_player = vlc_instance.media_new(fpath).player_new_from_media()
+            if platform.system() == 'Windows':
+                vlc_player.set_hwnd(videopanel.winfo_id())
+            else:
+                vlc_player.set_xwindow(videopanel.winfo_id())
+
+            pause_duration = 0
 
         raw_MCB=e.get()
         max_current_buffer=int(e.get()*1000000)
@@ -415,6 +421,11 @@ def main():
         global delaytype
         delaytype=type
 
+
+    videopanel = Frame()
+    canvas = Canvas(videopanel).pack(side=RIGHT, fill=BOTH,expand=1)
+    videopanel.pack(side=RIGHT,fill=BOTH,expand=1)
+
     #scale slider for max_current_buffer
     label = Label(master,text="Maximum active buffer (Mb)",fg="black")
     label.pack()
@@ -474,6 +485,8 @@ def main():
     delayLabel.pack()
     delayDynamic=Label(master,text="0",fg="red")
     delayDynamic.pack()
+
+
 
     mainloop()
 
