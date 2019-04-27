@@ -301,6 +301,7 @@ def main():
         global max_current_buffer
         global curr_playback_frame
         global playing
+        global join_segments
         global delay
         global run_start_time
         global delaytype
