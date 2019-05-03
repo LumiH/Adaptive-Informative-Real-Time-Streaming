@@ -96,10 +96,11 @@ def issue_request(sock, request,customfield):
 
     return response, raw_body
 
-def get_delay(type,customfield):
+def get_delay(type,customfield): #returns the amount of delay at the current playback time
     global delaytype
     global delayMax
     global startime
+
     if delaytype=="linear":
         return delayMax
     if delaytype=="lineargrowth":
@@ -114,6 +115,7 @@ def get_delay(type,customfield):
         else:
             return 0.0
     if delaytype=="random":
+
         return float(random.randint(0,int(delayMax*1000)))/1000.0
     if delaytype=="custom":
         equation=customfield.get()
@@ -148,7 +150,7 @@ def stream(hostname, url, out,TK,framelabel,segmentlabel,vlc_player,reslabel,cus
     sock = socket.socket()
     sock.connect((hostname, 80))
 
-    # Perform streaming
+    # retrieve the mpd and download the initial segment
     mpd = get_mpd(hostname, url, sock,customfield)
     get_init(mpd, hostname, sock, out,customfield)
 
@@ -168,14 +170,17 @@ def stream(hostname, url, out,TK,framelabel,segmentlabel,vlc_player,reslabel,cus
     global pause_duration
 
 
-    #begin buffering
+    #retrieve and calculate information about the file to be streamed
     segment_duration=mpd.representations[0]._segment_duration/1000
     total_segments=len(mpd.representations[0].segment_ranges)
     last_frame = total_segments*segment_duration*fps
+
     curr_segment_frame=0
     representation_chosen=False
 
     while curr_playback_frame < last_frame and running==True:
+
+        #update the dynamic labels in the information readout
         if len(to_play_buffer) == 0:
             segmentlabel.config(fg="green",text="0 , 0")
         else:
@@ -183,15 +188,19 @@ def stream(hostname, url, out,TK,framelabel,segmentlabel,vlc_player,reslabel,cus
         delayLabel.config(fg="green",text=str(LastDelay))
         bandwidthLabel.config(fg="green",text=str(round(bandwidth/1000000,3)))
 
-        if len(to_play_buffer) > join_segments and playing!=True:  #handles transfer of frames to playback
+        if len(to_play_buffer) > join_segments and playing!=True:  #if enough segments have been buffered begin vlc playback
             playing=True
             start_time=time.time()
             vlc_player.play()
+
         if playing==True:
+            #calculate what frame we are on
             framelabel.config(fg="green",text=str(datetime.timedelta(seconds=(curr_playback_frame)/fps)))
             new_playback_frame=int(float(time.time()-start_time-pause_duration)/(1.0/fps))
             curr_segment_frame+=new_playback_frame-curr_playback_frame
             curr_playback_frame=new_playback_frame
+
+            #discard segments if they have been played in full
             if curr_segment_frame >= to_play_buffer[0]['frame_number']:
                 played_segments.append(to_play_buffer.pop(0))
                 played_segment_bytes+=to_play_buffer[0]['size']
@@ -200,28 +209,37 @@ def stream(hostname, url, out,TK,framelabel,segmentlabel,vlc_player,reslabel,cus
         if len(to_play_buffer) == 0:     #get initial segment of data
             framelabel.config(fg="red",text=str(datetime.timedelta(seconds=(curr_playback_frame)/fps)))
             segment=get_segment(hostname,sock,mpd.representations[0],0,out,reslabel,customfield)
-            curr_representation = mpd.representations[0]
+            curr_representation = mpd.representations[0] #arbitrary assertion to start at the lowest resolution availible in the beginning
             to_play_buffer.append(segment)
+
             curr_segment_num+=1
             bytes_in_buffer+=segment['size']
+
             representation_chosen=False
-        else: # update global variables and get segment
+
+        else: #if we have already buffered one segment we can now use the algorithm to determine which resolution we should pull next
             last_buffered = to_play_buffer[-1]
-            bandwidth = last_buffered['size']/last_buffered['time_to_pull']
+            bandwidth = last_buffered['size']/last_buffered['time_to_pull'] #the availible bandwidth measured from pulling the last segment
 
             if curr_segment_num < total_segments:
+
                 if representation_chosen!=True:
-                    for representation in reversed(mpd.representations):
+
+                    for representation in reversed(mpd.representations): #going from highest res to lowest res see what the highest resolution we can pull is given our bandwidth
                             curr_seg_duration = representation._segment_duration
                             num_bytes = representation.segment_ranges[curr_segment_num][1]-representation.segment_ranges[curr_segment_num][0]
+
                             if bandwidth > (num_bytes/float(curr_seg_duration/1000)):
                                 curr_representation = representation
                                 representation_chosen=True
                                 break
-                    if representation_chosen==False:
+
+                    if representation_chosen==False: #if we havent found a resolution which is in our bandwidth limits, select the lowest possible resolution
                         curr_representation=mpd.representations[0]
                         representation_chosen=True
-                elif max_current_buffer - (bytes_in_buffer - played_segment_bytes) > num_bytes:
+
+                elif max_current_buffer - (bytes_in_buffer - played_segment_bytes) > num_bytes: #if we have found a resolution which matches our availible bandwidth pull the next segment at this resolution
+
                     segment=get_segment(hostname,sock,representation,curr_segment_num,out,reslabel,customfield)
                     to_play_buffer.append(segment)
                     curr_segment_num+=1
@@ -229,31 +247,41 @@ def stream(hostname, url, out,TK,framelabel,segmentlabel,vlc_player,reslabel,cus
                     representation_chosen=False
 
         TK.update_idletasks()
-        TK.update()
+        TK.update() #update the tkinter user interface allowing perameter adjustment and playback control
+
+
     sock.close()
 
     return None
 
 def get_segment(hostname,sock,representation,segment,out,reslabel,customfield):
+
     global last_buffered
+
+    #retrieve information about the representatino
     byte_range = representation.segment_ranges[segment]
+
+    #build the http request to the streaming server
     range_string='bytes='+str(byte_range[0])+'-'+str(byte_range[1])
     req = myhttp.HTTPRequest("GET", myhttp.URI(representation.base_url), headers={"Host":hostname,"Range":range_string})
     reslabel.config(fg="green",text=str(representation._width)+"x"+str(representation._height))
+
+    #start the timer to see how long it takes to pull the segment
     request_start=time.time()
-    (response, raw_body) = issue_request(sock, req,customfield)
-    out.write(raw_body)
+    (response, raw_body) = issue_request(sock, req,customfield) #send the http request
+    out.write(raw_body) #write the recieved segment to the output file
 
     time_to_pull=time.time()-request_start
     body_size=sys.getsizeof(raw_body)
     number_of_frames = (representation._segment_duration/1000)*fps
 
-    segment_pack={'ID':segment,'time_to_pull':time_to_pull,'frame_number':number_of_frames,'size':body_size,'raw_body': raw_body}
+    segment_pack={'ID':segment,'time_to_pull':time_to_pull,'frame_number':number_of_frames,'size':body_size,'raw_body': raw_body} #build dictionary object for buffer
 
     last_buffered = segment_pack
     return segment_pack
 
 def main():
+
     global running
     global total_segments
     global delayLabel
@@ -277,7 +305,7 @@ def main():
     else:
         sink = open(settings.output, 'wb')
 
-    master = Tk() #creates tkinter instance referenced thorghout
+    master = Tk() #creates tkinter instance referenced throughout
     master.geometry("950x720")
     master.title("Adaptive Real-Time Streaming")
 
@@ -304,7 +332,7 @@ def main():
 
         running=True
 
-        if curr_playback_frame>0: #if paused and not restarted begin playback immediatley
+        if curr_playback_frame>0: #if paused and not restarted begin playback immediatley without resetting variables
             playing=True
             vlc_player.set_pause(False)
             pause_duration += time.time()-pause_start_time
@@ -318,6 +346,7 @@ def main():
 
             pause_duration = 0
 
+        #retrieve the slider values and assign them to the global variables
         raw_MCB=e.get()
         max_current_buffer=int(e.get()*1000000)
         join_segments=int(j.get())
@@ -328,21 +357,23 @@ def main():
 
         stream(uri.host, uri.abs_path, sink,master,TimeDynamic,SegDynamic,vlc_player,ResDynamic,CustomEquation,delayDynamic, bandwidthDynamic)
 
+        master.update() #update the tkinter user interface allowing perameter adjustment and playback control
 
-
-        master.update()
     def stop(): #Pauses the stream by stoping playback
 
         global running
         global playing
         global vlc_player
+
         running=False #total program running
         playing=False #playback occuring in VlC
+
         global pause_start_time
 
         print("PAUSED")
 
         pause_start_time = time.time()
+
         #sets text color to yellow to indicate paused state
         TimeDynamic.config(fg="yellow")
         SegDynamic.config(fg="yellow")
@@ -351,7 +382,7 @@ def main():
         delayDynamic.config(fg="yellow")
         bandwidthDynamic.config(fg="yellow")
 
-        #Puases the Vlc playback
+        #Puases the VlC playback
         if vlc_player.is_playing():
             vlc_player.set_pause(True)
 
@@ -376,6 +407,7 @@ def main():
 
         stop()
 
+        #resets global variables to their standard defaults
         bytes_in_buffer =0
         bandwidth =1000
         played_segment_bytes =0
@@ -399,6 +431,7 @@ def main():
         ResDynamic.config(fg="red",text="0x0")
         print("RESET")
 
+        #Deletes the old stream file and creates a new VLC instance for playback
         os.remove("test.mp4")
         if settings.output is None:
             sink = open("test.mp4", 'wb')
@@ -413,6 +446,7 @@ def main():
         delaytype=type
 
 
+    #Add the video player window to the interface
     videopanel = Frame()
     canvas = Canvas(videopanel).pack(side=RIGHT, fill=BOTH,expand=1)
     videopanel.pack(side=RIGHT,fill=BOTH,expand=1)
