@@ -79,9 +79,7 @@ def issue_request(sock, request,customfield):
     # Parse response header
     end_header = raw_response.index(b'\r\n\r\n') + 4
     raw_header = raw_response[:end_header]
-    #logging.debug(raw_header)
     response = myhttp.HTTPResponse.parse(raw_header.decode())
-    #logging.debug(response)
 
     # Receive response body
     content_length = response.get_header('Content-Length')
@@ -190,16 +188,15 @@ def stream(hostname, url, out,TK,framelabel,segmentlabel,vlc_player,reslabel,cus
             start_time=time.time()
             vlc_player.play()
         if playing==True:
-            # print(curr_playback_frame)
             framelabel.config(fg="green",text=str(datetime.timedelta(seconds=(curr_playback_frame)/fps)))
             new_playback_frame=int(float(time.time()-start_time-pause_duration)/(1.0/fps))
             curr_segment_frame+=new_playback_frame-curr_playback_frame
             curr_playback_frame=new_playback_frame
-            # print(curr_segment_frame)
             if curr_segment_frame >= to_play_buffer[0]['frame_number']:
                 played_segments.append(to_play_buffer.pop(0))
                 played_segment_bytes+=to_play_buffer[0]['size']
                 curr_segment_frame=0
+
         if len(to_play_buffer) == 0:     #get initial segment of data
             framelabel.config(fg="red",text=str(datetime.timedelta(seconds=(curr_playback_frame)/fps)))
             segment=get_segment(hostname,sock,mpd.representations[0],0,out,reslabel,customfield)
@@ -208,10 +205,6 @@ def stream(hostname, url, out,TK,framelabel,segmentlabel,vlc_player,reslabel,cus
             curr_segment_num+=1
             bytes_in_buffer+=segment['size']
             representation_chosen=False
-
-        #if frames_in_buffer >= buffer_size: #clear the buffer
-            # buffer.clear()
-
         else: # update global variables and get segment
             last_buffered = to_play_buffer[-1]
             bandwidth = last_buffered['size']/last_buffered['time_to_pull']
@@ -221,9 +214,7 @@ def stream(hostname, url, out,TK,framelabel,segmentlabel,vlc_player,reslabel,cus
                     for representation in reversed(mpd.representations):
                             curr_seg_duration = representation._segment_duration
                             num_bytes = representation.segment_ranges[curr_segment_num][1]-representation.segment_ranges[curr_segment_num][0]
-
                             if bandwidth > (num_bytes/float(curr_seg_duration/1000)):
-
                                 curr_representation = representation
                                 representation_chosen=True
                                 break
@@ -231,9 +222,6 @@ def stream(hostname, url, out,TK,framelabel,segmentlabel,vlc_player,reslabel,cus
                         curr_representation=mpd.representations[0]
                         representation_chosen=True
                 elif max_current_buffer - (bytes_in_buffer - played_segment_bytes) > num_bytes:
-                    # print('*'*20)
-                    # print(curr_segment_num, total_segments)
-                    # print('*'*20)
                     segment=get_segment(hostname,sock,representation,curr_segment_num,out,reslabel,customfield)
                     to_play_buffer.append(segment)
                     curr_segment_num+=1
@@ -255,10 +243,8 @@ def get_segment(hostname,sock,representation,segment,out,reslabel,customfield):
     request_start=time.time()
     (response, raw_body) = issue_request(sock, req,customfield)
     out.write(raw_body)
-    # print("WRITE")
 
     time_to_pull=time.time()-request_start
-    # print(time_to_pull)
     body_size=sys.getsizeof(raw_body)
     number_of_frames = (representation._segment_duration/1000)*fps
 
@@ -345,7 +331,6 @@ def main():
 
 
         master.update()
-        # print("test")
     def stop(): #Pauses the stream by stoping playback
 
         global running
